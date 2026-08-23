@@ -1,5 +1,10 @@
 # DSH Remote Web UI
 
+> **Fork 声明**：本仓库是原
+> [dsh-web-ui](https://github.com/zhu1090093659/dsh-web-ui) monorepo 中
+> `packages/dsh-remote-web-ui` 的独立分离分支，已修改为可独立使用。
+> 许可证条款见 [LICENSE](LICENSE)。
+
 [English](README.md) | 中文
 
 > 手机与电脑远程访问 + 一键远程更新：扫码配对后用手机远程使用当前 dsh web 工作区，同一枚令牌也可配对电脑浏览器、在其他设备上运行完整 Web GUI；侧边栏加载后静默检查 dsh-web-ui 全家桶新版本，发现时标记更新按钮；点击按钮后自动更新全家桶。

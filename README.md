@@ -1,5 +1,9 @@
 # DSH Remote Web UI
 
+> **Fork notice**: This is a standalone fork of the original
+> [dsh-web-ui](https://github.com/zhu1090093659/dsh-web-ui) monorepo's
+> `packages/dsh-remote-web-ui`, modified for independent use. See
+> [LICENSE](LICENSE) for license terms.
 
 English | [中文](README.zh.md)
 > Remote access for phones and computers + one-click updates: pair a phone to use the current dsh web workspace remotely, or pair a computer browser through the same token to run the full Web GUI from another device; the sidebar checks for a newer dsh-web-ui release after it loads and marks the update button when one is available; clicking it updates the family.

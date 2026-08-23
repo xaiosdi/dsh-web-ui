@@ -1,3 +1,8 @@
+/**
+ * Modified for standalone build: import path changed from
+ * `../../shared/tsdown.client.ts` to `./build/tsdown.client.ts`.
+ * Original: https://github.com/zhu1090093659/dsh-web-ui
+ */
 import { clientBundle, mobileBundle } from './build/tsdown.client.ts'
 
 /**
