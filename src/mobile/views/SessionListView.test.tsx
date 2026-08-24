@@ -12,15 +12,15 @@ vi.mock('../api.ts', () => ({
   listWorkspaces: vi.fn(),
   listAgentPresets: vi.fn(),
   createSession: vi.fn(),
-  sendCommand: vi.fn(),
+  setSandboxMode: vi.fn(),
 }))
-import { createSession, listAgentPresets, listSessions, listWorkspaces, sendCommand } from '../api.ts'
+import { createSession, listAgentPresets, listSessions, listWorkspaces, setSandboxMode } from '../api.ts'
 
 const listSessionsMock = vi.mocked(listSessions)
 const listWorkspacesMock = vi.mocked(listWorkspaces)
 const listAgentPresetsMock = vi.mocked(listAgentPresets)
 const createSessionMock = vi.mocked(createSession)
-const sendCommandMock = vi.mocked(sendCommand)
+const setSandboxModeMock = vi.mocked(setSandboxMode)
 
 const workspace: WorkspaceRow = {
   workspaceId: 'w-1' as never,
@@ -250,8 +250,8 @@ describe('SessionListView permission bar', () => {
     expect(inactive?.className).not.toContain('mobile-permissionTier-active')
   })
 
-  it('tapping a tier sends the correct command to the target session', async () => {
-    sendCommandMock.mockResolvedValue(undefined)
+  it('tapping a tier sends the correct mode to the target session', async () => {
+    setSandboxModeMock.mockResolvedValue(undefined)
     listSessionsMock.mockResolvedValue({
       items: [summary('s-1', 1_700_000_000_000, {
         projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
@@ -264,12 +264,12 @@ describe('SessionListView permission bar', () => {
     fireEvent.click(screen.getByText('完全权限'))
 
     await waitFor(() => {
-      expect(sendCommandMock).toHaveBeenCalledWith('s-1', '/permission danger-full-access')
+      expect(setSandboxModeMock).toHaveBeenCalledWith('s-1', 'danger-full-access')
     })
   })
 
-  it('sends /sandbox command when tapping 读工作区', async () => {
-    sendCommandMock.mockResolvedValue(undefined)
+  it('sends read-only mode when tapping 读工作区', async () => {
+    setSandboxModeMock.mockResolvedValue(undefined)
     listSessionsMock.mockResolvedValue({
       items: [summary('s-1', 1_700_000_000_000, {
         projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
@@ -282,7 +282,7 @@ describe('SessionListView permission bar', () => {
     fireEvent.click(screen.getByText('读工作区'))
 
     await waitFor(() => {
-      expect(sendCommandMock).toHaveBeenCalledWith('s-1', '/sandbox read-only')
+      expect(setSandboxModeMock).toHaveBeenCalledWith('s-1', 'read-only')
     })
   })
 
@@ -304,7 +304,7 @@ describe('SessionListView permission bar', () => {
   })
 
   it('uses recentSessionId when provided', async () => {
-    sendCommandMock.mockResolvedValue(undefined)
+    setSandboxModeMock.mockResolvedValue(undefined)
     listSessionsMock.mockResolvedValue({
       items: [
         summary('s-1', 1_700_000_000_000, {

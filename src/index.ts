@@ -360,7 +360,19 @@ function applyImpl(ctx: Context, config?: Config): void {
     ...makeRoutes({ service, lanAddresses, requirePairingForLan: () => resolve().requirePairingForLan }),
     ...makeMobileRoutes(),
     ...(apiProxy !== undefined
-      ? makeMobileApiRoutes({ service, apiProxy, pendingTracker: new PendingTracker(), mobileEnterToSend: () => resolve().mobileEnterToSend })
+      ? makeMobileApiRoutes({
+          service,
+          apiProxy,
+          pendingTracker: new PendingTracker(),
+          mobileEnterToSend: () => resolve().mobileEnterToSend,
+          setSandboxMode: async (sessionId: string, mode: string) => {
+            const sessions = ctx.get('sessions') as { get(id: string): { append(type: string, data: Record<string, unknown>): void } | undefined } | undefined
+            if (sessions === undefined) throw new Error('sessions service unavailable')
+            const session = sessions.get(sessionId)
+            if (session === undefined) throw new Error(`session ${sessionId} not found in the live store`)
+            session.append('sandbox/mode', { mode })
+          },
+        })
       : []),
     ...(apiProxy !== undefined ? makePairedModelCatalogRoutes({ service, apiProxy, lanAddresses }) : []),
     // The remote desktop channel: policy-gated `/remote` prefix that

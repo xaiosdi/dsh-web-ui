@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { WorkspaceView as WorkspaceRow } from '@deepseek-ai/dsh-host-apiproxy/api/workspace'
 import type { AgentPresetEntry } from '@deepseek-ai/dsh-host-apiproxy/api/agent-presets'
 import type { SessionSummary } from '@deepseek-ai/dsh-host-apiproxy/api/sessions'
-import { createSession, listAgentPresets, listSessions, listWorkspaces, sendCommand } from '../api.ts'
+import { createSession, listAgentPresets, listSessions, listWorkspaces, setSandboxMode } from '../api.ts'
 import { errorText, formatTime, staleHostHint, toSessionView, type SessionView } from './App.tsx'
 import { ThemeToggle } from '../theme-toggle.tsx'
 
@@ -265,7 +265,7 @@ export function SessionListView({ workspace, recentSessionId, onBack, onPick }: 
     if (target === undefined || permissionSending) return
     setPermissionSending(true)
     setPermissionError(undefined)
-    void sendCommand(target, tier.command).then(
+    void setSandboxMode(target, tier.value).then(
       () => { setPermissionSending(false) },
       (reason: unknown) => {
         setPermissionSending(false)

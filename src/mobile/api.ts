@@ -112,6 +112,16 @@ export async function sendCommand(sessionId: string, line: string): Promise<unkn
   })
 }
 
+/**
+ * Set the sandbox mode on a session directly (bypasses the command registry).
+ * The host-side handler appends a sandbox/mode event to the session's log.
+ * @param sessionId - the target session id.
+ * @param mode - one of 'read-only', 'workspace-write', 'danger-full-access'.
+ */
+export async function setSandboxMode(sessionId: string, mode: string): Promise<void> {
+  await callUnary<unknown>('mobile.sandboxMode', { sessionId, mode })
+}
+
 /** Fresh advisory model directory for one session (current + groups + failures). */
 export async function models(sessionId: string): Promise<SessionModels> {
   return await callUnary<SessionModels>('session.models', { sessionId })

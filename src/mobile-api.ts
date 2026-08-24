@@ -63,6 +63,7 @@ const MOBILE_ALLOWLIST = new Set([
 const MOBILE_PREFERENCES_METHOD = 'mobile.preferences'
 const MOBILE_PENDING_METHOD = 'mobile.pending'
 const MOBILE_RESPOND_METHOD = 'mobile.respond'
+const MOBILE_SANDBOX_MODE_METHOD = 'mobile.sandboxMode'
 
 /** One session.list page (thin phones load incrementally). */
 const SESSION_PAGE_SIZE = 20
@@ -99,6 +100,11 @@ export interface MobileApiDeps {
   pendingTracker: PendingTracker
   /** The resolved mobile composer preference (live per request). */
   mobileEnterToSend: () => boolean
+  /**
+   * Set the sandbox mode on a session directly (bypasses the command registry).
+   * Called from the phone's permission preset bar.
+   */
+  setSandboxMode: (sessionId: string, mode: string) => Promise<void>
   /** SSE keep-alive ping cadence for the mux stream (default 15000 ms; test seam). */
   eventsHeartbeatMs?: number
 }
@@ -160,6 +166,7 @@ export function makeMobileApiRoutes(deps: MobileApiDeps): WebRoute[] {
     const local = method === MOBILE_PREFERENCES_METHOD 
       || method === MOBILE_PENDING_METHOD 
       || method === MOBILE_RESPOND_METHOD
+      || method === MOBILE_SANDBOX_MODE_METHOD
     if (!MOBILE_ALLOWLIST.has(method) && !local) {
       writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: `method ${method} is not exposed to the mobile surface` } })
       return
@@ -213,6 +220,33 @@ export function makeMobileApiRoutes(deps: MobileApiDeps): WebRoute[] {
             rpcId,
             result: { ok: false, error: { code: 'internal', message } },
           })
+        }
+      } else if (method === MOBILE_SANDBOX_MODE_METHOD) {
+        const payload = parsed.payload as any
+        const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : undefined
+        const mode = typeof payload?.mode === 'string' ? payload.mode : undefined
+        if (sessionId === undefined || mode === undefined) {
+          writeJson(res, 200, {
+            type: 'server-response',
+            rpcId,
+            result: { ok: false, error: { code: 'bad-request', message: 'sessionId and mode are required' } },
+          })
+        } else {
+          try {
+            await deps.setSandboxMode(sessionId, mode)
+            writeJson(res, 200, {
+              type: 'server-response',
+              rpcId,
+              result: { ok: true, value: { accepted: true } },
+            })
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            writeJson(res, 200, {
+              type: 'server-response',
+              rpcId,
+              result: { ok: false, error: { code: 'internal', message } },
+            })
+          }
         }
       }
       return
