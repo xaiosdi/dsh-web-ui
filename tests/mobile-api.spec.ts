@@ -412,7 +412,7 @@ describe('mobile api body failure contract (shared readBoundedJson)', () => {
       const oversize = await rawPost(
         server.port,
         '/m/api/mobile.preferences',
-        JSON.stringify({ type: 'client-request', rpcId: 'p', payload: { blob: 'x'.repeat(70 * 1024) } }),
+        JSON.stringify({ type: 'client-request', rpcId: 'p', payload: { blob: 'x'.repeat(2 * 1024 * 1024 + 64) } }),
       )
       expect(oversize.error).toBeNull()
       expect(oversize.status).toBe(400)

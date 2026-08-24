@@ -21,14 +21,22 @@ const WS_FORWARD_HEADERS = [
   'sec-websocket-protocol',
 ] as const
 
-/** Response headers copied from the loopback upstream (no hop-by-hop). */
+/**
+ * Response headers copied from the loopback upstream (no hop-by-hop).
+ * Includes content-encoding (gzip/br) and transfer-encoding so the browser
+ * can correctly decode compressed or chunked upstream responses — without
+ * these, a compressed JSON body reaches the client as raw bytes and
+ * `response.json()` throws "malformed response body".
+ */
 const HTTP_FORWARD_RESPONSE_HEADERS = [
   'content-type',
   'content-length',
+  'content-encoding',
   'content-disposition',
   'cache-control',
   'etag',
   'last-modified',
+  'transfer-encoding',
 ] as const
 
 /**
@@ -66,6 +74,12 @@ export function proxyLoopbackHttp(
     for (const name of HTTP_FORWARD_RESPONSE_HEADERS) {
       const value = upstreamRes.headers[name]
       if (value !== undefined) out[name] = value
+    }
+    // HTTP/1.1 forbids both content-length and transfer-encoding; if the
+    // upstream sent both (unlikely but possible), drop transfer-encoding
+    // so Node.js does not reject the response headers.
+    if (out['content-length'] !== undefined && out['transfer-encoding'] !== undefined) {
+      delete out['transfer-encoding']
     }
     res.writeHead(upstreamRes.statusCode ?? 502, out)
     upstreamRes.pipe(res)

@@ -166,7 +166,9 @@ export function makeMobileApiRoutes(deps: MobileApiDeps): WebRoute[] {
     }
     let envelope: unknown
     try {
-      envelope = await readBoundedJson(req, 64 * 1024)
+      // 2 MiB request cap: pasting a long prompt into the mobile composer can
+      // exceed the old 64 KiB default, which made the phone unable to send it.
+      envelope = await readBoundedJson(req, 2 * 1024 * 1024)
     } catch {
       writeJson(res, 400, { ok: false, error: { code: 'bad-request', message: 'invalid json body' } })
       return

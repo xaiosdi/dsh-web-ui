@@ -429,16 +429,31 @@ export function ChatView({ session, mux, onBack }: ChatViewProps) {
     const text = input.trim()
     if (text === '' || sending) return
     setSending(true)
-    void prompt(session.sessionId, text).then(
-      () => {
-        setSending(false)
-        setInput('')
-      },
-      (reason: unknown) => {
-        setSending(false)
-        setError(errorText(reason))
-      },
-    )
+    // Slash commands are sent through sendCommand so the host interprets
+    // them as directives (e.g. /permission, /help) instead of user prompts.
+    if (text.startsWith('/')) {
+      void sendCommand(session.sessionId, text).then(
+        () => {
+          setSending(false)
+          setInput('')
+        },
+        (reason: unknown) => {
+          setSending(false)
+          setError(errorText(reason))
+        },
+      )
+    } else {
+      void prompt(session.sessionId, text).then(
+        () => {
+          setSending(false)
+          setInput('')
+        },
+        (reason: unknown) => {
+          setSending(false)
+          setError(errorText(reason))
+        },
+      )
+    }
   }, [input, sending, session.sessionId])
 
   const modelLabel = currentModel?.model ?? '模型'
