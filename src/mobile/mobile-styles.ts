@@ -342,6 +342,83 @@ body {
   font-size: 12px;
 }
 
+/* ── permission preset bar (session list) ─────────────────────────────── */
+
+.mobile-permissionBar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid var(--m-border);
+  background: var(--m-bg);
+}
+
+.mobile-permissionLabel {
+  color: var(--m-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mobile-permissionTiers {
+  display: flex;
+  gap: 6px;
+}
+
+.mobile-permissionTier {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  background: var(--m-bg-raised);
+  color: var(--m-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.mobile-permissionTier:active {
+  background: var(--m-bg-input);
+}
+
+.mobile-permissionTier:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mobile-permissionTier-active {
+  border-color: var(--m-accent);
+  background: var(--m-accent-soft);
+  color: var(--m-accent);
+  font-weight: 600;
+}
+
+.mobile-permissionCheck {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.mobile-permissionError {
+  margin: 0;
+  color: var(--m-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mobile-permissionHint {
+  margin: 0;
+  color: var(--m-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* ── chat ────────────────────────────────────────────────────────────── */
 
 .chat {
@@ -1188,6 +1265,7 @@ body {
 .mobile-button:focus-visible,
 .mobile-new:focus-visible,
 .mobile-presetSelect:focus-visible,
+.mobile-permissionTier:focus-visible,
 .chat-send:focus-visible,
 .chat-chip:focus-visible,
 .chat-msg-toggle:focus-visible,

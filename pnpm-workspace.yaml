@@ -1,2 +1,4 @@
 allowBuilds:
-  cloudflared: set this to true or false
+  cloudflared: true
+onlyBuiltDependencies:
+  - cloudflared

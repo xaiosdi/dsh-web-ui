@@ -507,6 +507,31 @@ function applyImpl(ctx: Context, config?: Config): void {
     table.push({ kind: 'script', placement: 'head', text: REMOTE_CHANNEL_BOOT_SCRIPT })
   }), 'remote-web-ui: remote channel boot patch')
 
+  // ── /sandbox command ─────────────────────────────────────────────────────
+  // Register a command that sets the sandbox mode directly (bypassing the
+  // permission preset table). This lets the mobile preset UI offer a "read
+  // workspace" tier (read-only sandbox mode) even when the host's preset
+  // table doesn't include one — the command handler appends a sandbox/mode
+  // event, which the permission projection derives as "custom".
+  // The service is available when dsh-commands is composed (the standard
+  // web-app profile mounts it).
+  ctx.inject(['commands'], (commandCtx: any) => {
+    commandCtx.commands.register({
+      name: 'sandbox',
+      description: 'Set the sandbox mode directly (bypasses permission presets)',
+      input: { hint: '<mode>' },
+      handler: ({ agent, rawInput }: { agent: { session: { append(type: string, data: Record<string, unknown>): void } }; rawInput: string }) => {
+        const mode = rawInput.trim()
+        const validModes = ['read-only', 'workspace-write', 'danger-full-access']
+        if (!validModes.includes(mode)) {
+          return { kind: 'error' as const, text: `unknown sandbox mode "${mode}" (available: ${validModes.join(', ')})` }
+        }
+        agent.session.append('sandbox/mode', { mode })
+        return { kind: 'success' as const, text: `sandbox mode ${mode}` }
+      },
+    })
+  })
+
   installSettingsSection(ctx, REMOTE_WEB_UI_SETTINGS_NAMESPACE, Config, config ?? {}, {
     setSource: (source) => {
       current = source

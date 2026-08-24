@@ -127,6 +127,11 @@ function PairedApp() {
   const [initialWorkspaceId, setInitialWorkspaceId] = useState<string | undefined>(
     () => mobileWorkspaceTarget(window.location.search),
   )
+  /**
+   * The most recently opened chat session id. Used by the session-list
+   * permission preset entry to target the session the user is working on.
+   */
+  const [recentSessionId, setRecentSessionId] = useState<string | undefined>(undefined)
   const muxRef = useRef<MuxClient | undefined>(undefined)
 
   // The mux stream lives for the page lifetime: session events keep the
@@ -147,13 +152,17 @@ function PairedApp() {
 
   const back = useCallback(() => {
     setRoute(previous => {
-      if (previous.kind === 'chat') return { kind: 'sessions', workspace: previous.workspace }
+      if (previous.kind === 'chat') {
+        setRecentSessionId(previous.session.sessionId)
+        return { kind: 'sessions', workspace: previous.workspace }
+      }
       if (previous.kind === 'sessions') return { kind: 'workspaces' }
       return previous
     })
   }, [])
 
   const openChat = useCallback((session: SessionView, workspace: WorkspaceRow) => {
+    setRecentSessionId(session.sessionId)
     setRoute({ kind: 'chat', session, workspace })
   }, [])
 
@@ -175,6 +184,7 @@ function PairedApp() {
           ? (
             <SessionListView
               workspace={route.workspace}
+              recentSessionId={recentSessionId}
               onBack={back}
               onPick={(session) => { openChat(session, route.workspace) }}
             />

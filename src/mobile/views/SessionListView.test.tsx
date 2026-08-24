@@ -12,13 +12,15 @@ vi.mock('../api.ts', () => ({
   listWorkspaces: vi.fn(),
   listAgentPresets: vi.fn(),
   createSession: vi.fn(),
+  sendCommand: vi.fn(),
 }))
-import { createSession, listAgentPresets, listSessions, listWorkspaces } from '../api.ts'
+import { createSession, listAgentPresets, listSessions, listWorkspaces, sendCommand } from '../api.ts'
 
 const listSessionsMock = vi.mocked(listSessions)
 const listWorkspacesMock = vi.mocked(listWorkspaces)
 const listAgentPresetsMock = vi.mocked(listAgentPresets)
 const createSessionMock = vi.mocked(createSession)
+const sendCommandMock = vi.mocked(sendCommand)
 
 const workspace: WorkspaceRow = {
   workspaceId: 'w-1' as never,
@@ -203,5 +205,125 @@ describe('SessionListView creation', () => {
     expect(await screen.findByText(/HTTP 403/)).toBeTruthy()
     expect(await screen.findByText(/重启 dsh web/)).toBeTruthy()
     expect(picked).toBeUndefined()
+  })
+})
+
+describe('SessionListView permission bar', () => {
+  const permissionsValue = {
+    options: [
+      { value: 'danger-full-access', name: '完全权限' },
+      { value: 'workspace-write', name: '写工作区' },
+    ],
+    currentValue: 'workspace-write',
+  }
+
+  it('renders three tier buttons when a session has permissions projection', async () => {
+    listSessionsMock.mockResolvedValue({
+      items: [summary('s-1', 1_700_000_000_000, {
+        projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
+      })],
+      hasMore: false,
+    })
+    renderList()
+
+    expect(await screen.findByText('运行环境')).toBeTruthy()
+    expect(screen.getByText('完全权限')).toBeTruthy()
+    expect(screen.getByText('写工作区')).toBeTruthy()
+    expect(screen.getByText('读工作区')).toBeTruthy()
+  })
+
+  it('highlights the current effective tier', async () => {
+    listSessionsMock.mockResolvedValue({
+      items: [summary('s-1', 1_700_000_000_000, {
+        projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
+      })],
+      hasMore: false,
+    })
+    renderList()
+
+    await screen.findByText('运行环境')
+    // The active tier (workspace-write) should have the active class.
+    const active = screen.getByText('写工作区').closest('button')
+    expect(active?.className).toContain('mobile-permissionTier-active')
+    // The inactive tier should not have the active class.
+    const inactive = screen.getByText('完全权限').closest('button')
+    expect(inactive?.className).not.toContain('mobile-permissionTier-active')
+  })
+
+  it('tapping a tier sends the correct command to the target session', async () => {
+    sendCommandMock.mockResolvedValue(undefined)
+    listSessionsMock.mockResolvedValue({
+      items: [summary('s-1', 1_700_000_000_000, {
+        projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
+      })],
+      hasMore: false,
+    })
+    renderList()
+
+    await screen.findByText('运行环境')
+    fireEvent.click(screen.getByText('完全权限'))
+
+    await waitFor(() => {
+      expect(sendCommandMock).toHaveBeenCalledWith('s-1', '/permission danger-full-access')
+    })
+  })
+
+  it('sends /sandbox command when tapping 读工作区', async () => {
+    sendCommandMock.mockResolvedValue(undefined)
+    listSessionsMock.mockResolvedValue({
+      items: [summary('s-1', 1_700_000_000_000, {
+        projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
+      })],
+      hasMore: false,
+    })
+    renderList()
+
+    await screen.findByText('运行环境')
+    fireEvent.click(screen.getByText('读工作区'))
+
+    await waitFor(() => {
+      expect(sendCommandMock).toHaveBeenCalledWith('s-1', '/sandbox read-only')
+    })
+  })
+
+  it('shows the hint when no owned session exists', async () => {
+    renderList()
+    expect(await screen.findByText(/暂无会话，新建后即可切换运行环境/)).toBeTruthy()
+  })
+
+  it('disables tier buttons when the permission target is unavailable', async () => {
+    renderList()
+    await screen.findByText(/暂无会话/)
+
+    const buttons = screen.getAllByRole('button').filter(b => b.textContent?.includes('权限') || b.textContent?.includes('写工作区') || b.textContent?.includes('读工作区'))
+    // The permission buttons in the bar should be disabled.
+    const tierButtons = screen.getAllByText(/完全权限|写工作区|读工作区/).map(el => el.closest('button'))
+    for (const btn of tierButtons) {
+      expect(btn?.hasAttribute('disabled')).toBe(true)
+    }
+  })
+
+  it('uses recentSessionId when provided', async () => {
+    sendCommandMock.mockResolvedValue(undefined)
+    listSessionsMock.mockResolvedValue({
+      items: [
+        summary('s-1', 1_700_000_000_000, {
+          projections: { asOfSeq: 42, values: { permissions: permissionsValue } },
+        }),
+        summary('s-2', 1_800_000_000_000, {
+          projections: { asOfSeq: 43, values: { permissions: { ...permissionsValue, currentValue: 'danger-full-access' } } },
+        }),
+      ],
+      hasMore: false,
+    })
+    listWorkspacesMock.mockResolvedValue([
+      { ...workspace, sessionIds: ['s-1', 's-2'] as never },
+    ])
+    // recentSessionId points to s-2 -> its tier (danger-full-access) should be active.
+    renderList({ recentSessionId: 's-2' })
+
+    await screen.findByText('运行环境')
+    const active = screen.getByText('完全权限').closest('button')
+    expect(active?.className).toContain('mobile-permissionTier-active')
   })
 })

@@ -11,19 +11,65 @@
  * the new chat — the same "new session opens" flow as the desktop UI.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { WorkspaceView as WorkspaceRow } from '@deepseek-ai/dsh-host-apiproxy/api/workspace'
 import type { AgentPresetEntry } from '@deepseek-ai/dsh-host-apiproxy/api/agent-presets'
 import type { SessionSummary } from '@deepseek-ai/dsh-host-apiproxy/api/sessions'
-import { createSession, listAgentPresets, listSessions, listWorkspaces } from '../api.ts'
+import { createSession, listAgentPresets, listSessions, listWorkspaces, sendCommand } from '../api.ts'
 import { errorText, formatTime, staleHostHint, toSessionView, type SessionView } from './App.tsx'
 import { ThemeToggle } from '../theme-toggle.tsx'
 
 /** Props for the session list. */
 export interface SessionListViewProps {
   workspace: WorkspaceRow
+  recentSessionId?: string
   onBack(): void
   onPick(session: SessionView): void
+}
+
+/** One switchable permission preset (the `permissions` projection shape). */
+interface PermissionOption {
+  value: string
+  name: string
+  description?: string
+}
+
+/** The `permissions` projection value: options + the effective current value. */
+interface PermissionSelectValue {
+  options: PermissionOption[]
+  currentValue: string
+}
+
+/** Defensive runtime guard for projection payloads. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Parse the wire `permissions` projection defensively; undefined when absent. */
+function parsePermissionSelect(value: unknown): PermissionSelectValue | undefined {
+  if (!isRecord(value)) return undefined
+  const rawOptions = Array.isArray(value['options']) ? value['options'] : []
+  const options: PermissionOption[] = []
+  for (const raw of rawOptions) {
+    if (!isRecord(raw)) continue
+    const optionValue = typeof raw['value'] === 'string' ? raw['value'] : undefined
+    const name = typeof raw['name'] === 'string' ? raw['name'] : undefined
+    if (optionValue === undefined || name === undefined) continue
+    options.push({
+      value: optionValue,
+      name,
+      ...(typeof raw['description'] === 'string' ? { description: raw['description'] } : {}),
+    })
+  }
+  const currentValue = typeof value['currentValue'] === 'string' ? value['currentValue'] : undefined
+  if (currentValue === undefined || options.length === 0) return undefined
+  return { options, currentValue }
+}
+
+/** One display-name transform for kebab-case machine names. */
+function displayName(name: string): string {
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return name
+  return name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
 /** Rows that belong to the opened workspace (its owned session id set). */
@@ -39,7 +85,7 @@ function ownedItems(page: SessionSummary[], workspace: WorkspaceRow): SessionVie
  * @param props - the workspace, back action, and pick action.
  * @returns the session list.
  */
-export function SessionListView({ workspace, onBack, onPick }: SessionListViewProps) {
+export function SessionListView({ workspace, recentSessionId, onBack, onPick }: SessionListViewProps) {
   const [rows, setRows] = useState<SessionView[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -49,6 +95,11 @@ export function SessionListView({ workspace, onBack, onPick }: SessionListViewPr
   const [presets, setPresets] = useState<readonly AgentPresetEntry[]>([])
   const [selectedPreset, setSelectedPreset] = useState<string | undefined>(undefined)
   const [presetsLoading, setPresetsLoading] = useState(true)
+  // Raw session summaries (keep the projection data `rows` discards).
+  const [rawSessions, setRawSessions] = useState<SessionSummary[]>([])
+  // Permission-sending state (one at a time, no queue).
+  const [permissionSending, setPermissionSending] = useState(false)
+  const [permissionError, setPermissionError] = useState<string | undefined>(undefined)
   const cursorRef = useRef<string | undefined>(undefined)
   const busyRef = useRef(false)
   // The freshest owned-id set: the mount effect re-reads the workspace roster
@@ -69,6 +120,7 @@ export function SessionListView({ workspace, onBack, onPick }: SessionListViewPr
         const fresh = workspaces.find(candidate => candidate.workspaceId === workspace.workspaceId)
         const current = fresh ?? workspace
         workspaceRef.current = current
+        setRawSessions(page.items)
         setRows(ownedItems(page.items, current))
         cursorRef.current = page.nextCursor
         setHasMore(page.hasMore)
@@ -117,6 +169,7 @@ export function SessionListView({ workspace, onBack, onPick }: SessionListViewPr
         setLoading(false)
         cursorRef.current = page.nextCursor
         setHasMore(page.hasMore)
+        setRawSessions(previous => [...previous, ...page.items])
         setRows(previous => [...previous, ...ownedItems(page.items, workspaceRef.current)])
       },
       (reason: unknown) => {
@@ -157,6 +210,76 @@ export function SessionListView({ workspace, onBack, onPick }: SessionListViewPr
 
   const createHint = createError !== undefined ? staleHostHint(createError) : undefined
   const selectedPresetEntry = presets.find(preset => preset.id === selectedPreset)
+
+  // ── permission preset bar ──────────────────────────────────────────────
+
+  // Build a session-id → PermissionSelectValue map from raw session data.
+  // The session list projections already carry the `permissions` select
+  // (augmented by @deepseek-ai/dsh-permission-presets); no extra RPC needed.
+  const permissionsMap = useMemo(() => {
+    const map = new Map<string, PermissionSelectValue>()
+    for (const s of rawSessions) {
+      const p = s.projections?.values !== undefined
+        ? (s.projections.values as Record<string, unknown>)['permissions']
+        : undefined
+      if (p !== undefined) {
+        const parsed = parsePermissionSelect(p)
+        if (parsed !== undefined) {
+          map.set(s.sessionId as string, parsed)
+        }
+      }
+    }
+    return map
+  }, [rawSessions])
+
+  // The session the permission bar should target: prefer the most recently
+  // opened session (tracked by App.tsx), fall back to the first owned row.
+  const permissionTargetId = useMemo<string | undefined>(() => {
+    if (recentSessionId !== undefined && permissionsMap.has(recentSessionId)) {
+      return recentSessionId
+    }
+    // Fall back to the first owned session row's session id.
+    // We need the raw session id, not the SessionView, so iterate rawSessions
+    // that are owned by this workspace.
+    if (rawSessions.length > 0) {
+      const owned = new Set(workspaceRef.current.sessionIds)
+      const firstOwned = rawSessions.find(s => owned.has(s.sessionId as never))
+      if (firstOwned !== undefined) return firstOwned.sessionId as string
+    }
+    return undefined
+  }, [recentSessionId, permissionsMap, rawSessions])
+
+  const currentPermissions = permissionTargetId !== undefined
+    ? permissionsMap.get(permissionTargetId)
+    : undefined
+
+  // Three preset tiers the user can tap.
+  const PERMISSION_TIERS: { value: string; label: string; command: string }[] = [
+    { value: 'danger-full-access', label: '完全权限', command: '/permission danger-full-access' },
+    { value: 'workspace-write', label: '写工作区', command: '/permission workspace-write' },
+    { value: 'read-only', label: '读工作区', command: '/sandbox read-only' },
+  ]
+
+  const handlePermissionTap = useCallback((tier: typeof PERMISSION_TIERS[number]) => {
+    const target = permissionTargetId
+    if (target === undefined || permissionSending) return
+    setPermissionSending(true)
+    setPermissionError(undefined)
+    void sendCommand(target, tier.command).then(
+      () => { setPermissionSending(false) },
+      (reason: unknown) => {
+        setPermissionSending(false)
+        setPermissionError(errorText(reason))
+      },
+    )
+  }, [permissionTargetId, permissionSending])
+
+  // Highlight the currently effective tier.  When the effective value is
+  // "custom" (the /sandbox read-only path) the 读工作区 button is active.
+  const effectiveValue = currentPermissions?.currentValue ?? ''
+  const activeTier = effectiveValue === 'custom'
+    ? 'read-only'
+    : effectiveValue
 
   return (
     <div className="mobile">
@@ -206,6 +329,34 @@ export function SessionListView({ workspace, onBack, onPick }: SessionListViewPr
           {createHint !== undefined && <span className="mobile-hint">{createHint}</span>}
         </p>
       )}
+      {/* ── permission preset bar ── */}
+      <div className="mobile-permissionBar">
+        <span className="mobile-permissionLabel">运行环境</span>
+        <div className="mobile-permissionTiers">
+          {PERMISSION_TIERS.map(tier => {
+            const isActive = activeTier === tier.value
+            const isSendingTarget = permissionSending && permissionTargetId !== undefined
+            return (
+              <button
+                key={tier.value}
+                type="button"
+                className={`mobile-permissionTier${isActive ? ' mobile-permissionTier-active' : ''}`}
+                disabled={permissionTargetId === undefined || permissionSending}
+                onClick={() => { handlePermissionTap(tier) }}
+              >
+                {tier.label}
+                {isActive && !isSendingTarget ? <span className="mobile-permissionCheck">✓</span> : null}
+              </button>
+            )
+          })}
+        </div>
+        {permissionError !== undefined && (
+          <p className="mobile-permissionError">{permissionError}</p>
+        )}
+        {permissionTargetId === undefined && (
+          <p className="mobile-permissionHint">暂无会话，新建后即可切换运行环境</p>
+        )}
+      </div>
       <ul className="mobile-list">
         {rows.map(row => (
           <li key={row.sessionId}>
